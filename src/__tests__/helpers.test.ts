@@ -165,6 +165,15 @@ describe("filterFilesForCwd", () => {
       "/repo/file.ts",
     ])
   })
+
+  test("keeps windows absolute paths inside cwd", () => {
+    expect(filterFilesForCwd([
+      "C:\\repo\\src\\file.ts",
+      "C:\\other\\file.ts",
+    ], "C:\\repo")).toEqual([
+      "C:\\repo\\src\\file.ts",
+    ])
+  })
 })
 
 describe("findDisplayLineMatches", () => {

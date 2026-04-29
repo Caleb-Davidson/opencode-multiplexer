@@ -2,6 +2,7 @@ import stripAnsi from "strip-ansi"
 import { relative as pathRelative } from "path"
 import type { SessionStatus } from "../store.js"
 import type { DisplayLine } from "./display-lines.js"
+import { isAbsolutePath, normalizePathForCompare } from "../platform/path-utils.js"
 
 /**
  * Format a timestamp as a compact relative time string.
@@ -89,9 +90,9 @@ export function highlightMatches(text: string, query: string): string {
 
 export function filterFilesForCwd(files: string[], cwd: string): string[] {
   return files.filter((file) => {
-    if (!file.startsWith("/")) return true
+    if (!isAbsolutePath(file)) return true
 
-    const relativePath = pathRelative(cwd, file)
+    const relativePath = pathRelative(normalizePathForCompare(cwd), normalizePathForCompare(file))
     return relativePath === "" || (!relativePath.startsWith("..") && relativePath !== "..")
   })
 }

@@ -1,7 +1,7 @@
 # OCMux — OpenCode Multiplexer
 
 [![npm version](https://img.shields.io/npm/v/opencode-multiplexer?style=flat-square)](https://www.npmjs.com/package/opencode-multiplexer)
-[![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-111827?style=flat-square)](#requirements)
+[![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-111827?style=flat-square)](#requirements)
 [![license](https://img.shields.io/badge/license-ISC-0f766e?style=flat-square)](./LICENSE)
 [![opencode](https://img.shields.io/badge/built%20for-opencode-7c3aed?style=flat-square)](https://opencode.ai)
 
@@ -37,7 +37,7 @@ When you're juggling several repositories at once, OCMux removes the friction of
 
 - [Bun](https://bun.sh) runtime
 - [opencode](https://opencode.ai) installed and available on `PATH`
-- macOS or Linux
+- macOS, Linux, or Windows
 - Optional: [fzf](https://github.com/junegunn/fzf) for the folder picker when spawning new sessions
 
 ### Install from npm
@@ -87,6 +87,8 @@ OCMux discovers opencode instances in two ways:
 **Existing sessions** (started outside OCMux): OCMux scans for running `opencode` processes using `ps`, identifies their working directories, and matches them to sessions in the shared opencode SQLite database at `~/.local/share/opencode/opencode.db`. These sessions are read-only in OCMux — you can view the conversation history, but to send messages you must attach to the TUI.
 
 **Spawned sessions** (started via OCMux): When you create a new session from within OCMux, it starts `opencode serve --port X` as a background process. This exposes an HTTP API that OCMux uses to send messages directly, cycle agent modes, and list available models. The session persists after you leave the conversation view.
+
+On Windows, spawned sessions are fully supported. Discovery of externally started sessions is best-effort and may be limited when the process working directory cannot be resolved.
 
 The dashboard polls every 2 seconds and updates status indicators automatically.
 

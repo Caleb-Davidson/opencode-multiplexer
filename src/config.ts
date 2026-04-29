@@ -1,5 +1,5 @@
 import { readFileSync } from "fs"
-import { homedir } from "os"
+import { getConfigDir, getDefaultOpencodeDbPath } from "./platform/dirs.js"
 import { join } from "path"
 
 export interface KeybindingsConfig {
@@ -101,7 +101,7 @@ const DEFAULTS: Config = {
   },
   pollIntervalMs: 2000,
   conversationPollIntervalMs: 1000,
-  dbPath: join(homedir(), ".local", "share", "opencode", "opencode.db"),
+  dbPath: getDefaultOpencodeDbPath(),
 }
 
 function deepMerge<T extends object>(defaults: T, overrides: Partial<T>): T {
@@ -124,12 +124,7 @@ function deepMerge<T extends object>(defaults: T, overrides: Partial<T>): T {
 }
 
 function loadConfig(): Config {
-  const configPath = join(
-    homedir(),
-    ".config",
-    "ocmux",
-    "config.json",
-  )
+  const configPath = join(getConfigDir(), "config.json")
   try {
     const raw = readFileSync(configPath, "utf-8")
     const parsed = JSON.parse(raw) as Partial<Config>

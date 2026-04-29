@@ -17,6 +17,7 @@ import { buildDisplayLines, type DisplayLine } from "./display-lines.js"
 import { buildRows, getNavigableIndices, type VisibleRow } from "./tree-rows.js"
 import { PickerOverlay } from "./picker-overlay.js"
 import { usePickerOverlay } from "../hooks/use-picker-overlay.js"
+import { stripCwdPrefix } from "../platform/path-utils.js"
 
 function Sidebar({
   rows,
@@ -1732,9 +1733,7 @@ type PendingQuestion = {
           width={effectiveWidth}
           countLabel="modified"
           renderItem={(f, i, isCursor) => {
-            const display = f.startsWith(sessionCwd + "/")
-              ? f.slice(sessionCwd.length + 1)
-              : f
+            const display = stripCwdPrefix(f, sessionCwd)
             return (
               <Box paddingLeft={1}>
                 <Text color={isCursor ? "cyan" : "gray"}>{isCursor ? "▸" : " "} </Text>

@@ -3,7 +3,7 @@ import { Box, Text } from "ink"
 import TextInput from "ink-text-input"
 import { execSync, spawn as spawnProcess } from "child_process"
 import { existsSync } from "fs"
-import { join } from "path"
+import { delimiter, join } from "path"
 import { createOpencodeClient } from "@opencode-ai/sdk"
 import { useStore } from "../store.js"
 import { useSpawnKeys } from "../hooks/use-keybindings.js"
@@ -25,7 +25,8 @@ function expandHome(p: string): string {
 
 function isFzfAvailable(): boolean {
   try {
-    execSync("which fzf", { stdio: "pipe" })
+    const cmd = process.platform === "win32" ? "where fzf" : "which fzf"
+    execSync(cmd, { stdio: "pipe" })
     return true
   } catch {
     return false
@@ -34,6 +35,7 @@ function isFzfAvailable(): boolean {
 
 function runFzf(): string | undefined {
   try {
+    if (process.platform === "win32") return undefined
     const searchPaths = [
       expandHome("~/Programming"),
       expandHome("~/repos"),
@@ -72,6 +74,12 @@ function isGitRepo(dir: string): boolean {
 export function detectProjectVenv(projectRoot: string): { root: string; binDir: string } | null {
   for (const dirName of [".venv", "venv"]) {
     const root = join(projectRoot, dirName)
+    if (process.platform === "win32") {
+      const scriptsDir = join(root, "Scripts")
+      if (existsSync(join(scriptsDir, "python.exe"))) {
+        return { root, binDir: scriptsDir }
+      }
+    }
     const binDir = join(root, "bin")
     if (existsSync(join(binDir, "python"))) {
       return { root, binDir }
@@ -134,7 +142,7 @@ export function Worktree() {
       const env = projectVenv
         ? {
             ...process.env,
-            PATH: `${projectVenv.binDir}:${process.env.PATH ?? ""}`,
+            PATH: `${projectVenv.binDir}${delimiter}${process.env.PATH ?? ""}`,
             VIRTUAL_ENV: projectVenv.root,
           }
         : undefined

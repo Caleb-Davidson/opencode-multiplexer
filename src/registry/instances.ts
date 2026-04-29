@@ -1,9 +1,11 @@
 import { mkdirSync, readFileSync, writeFileSync } from "fs"
-import { homedir } from "os"
 import { join } from "path"
 import { execSync, spawn } from "child_process"
+import { getConfigDir } from "../platform/dirs.js"
+import { isSameOrParentPath } from "../platform/path-utils.js"
+import { listOpencodeProcesses } from "../platform/process-discovery.js"
 
-const CONFIG_DIR = join(homedir(), ".config", "ocmux")
+const CONFIG_DIR = getConfigDir()
 const INSTANCES_FILE = join(CONFIG_DIR, "instances.json")
 const MANAGED_SESSIONS_FILE = join(CONFIG_DIR, "managed-sessions.json")
 
@@ -149,43 +151,34 @@ export async function waitForServer(port: number, timeoutMs = 15000): Promise<vo
  * Used as a fallback when the instance isn't in instances.json.
  */
 function findPidByWorktree(worktree: string): number | null {
-  try {
-    const psOutput = execSync("ps -eo pid,args 2>/dev/null", {
-      encoding: "utf-8",
-      timeout: 3000,
-    })
-    for (const line of psOutput.split("\n")) {
-      const trimmed = line.trim()
-      // Match both TUI and serve patterns
-      // Linux: "node /path/to/opencode" wrapper. macOS: bare "opencode".
-      const match = trimmed.match(/^(\d+)\s+(?:(?:node|bun|deno)\s+\S*\/opencode|opencode)(?:\s+serve|\s+-s\s+\S+)?/)
-      if (!match) continue
-      const pid = parseInt(match[1]!, 10)
-      try {
-        let cwd: string
-        if (process.platform === "linux") {
-          cwd = execSync(`readlink /proc/${pid}/cwd 2>/dev/null`, {
-            encoding: "utf-8", timeout: 1000,
-          }).trim()
-        } else {
-          const lsofOut = execSync(`lsof -p ${pid} 2>/dev/null`, {
-            encoding: "utf-8", timeout: 2000,
-          })
-          const cwdLine = lsofOut.split("\n").find((l) => l.includes(" cwd "))
-          cwd = cwdLine?.trim().split(/\s+/).slice(8).join(" ") ?? ""
-        }
-        // Match if: exact, cwd is under worktree, OR worktree is under cwd
-        if (
-          cwd === worktree ||
-          cwd.startsWith(worktree + "/") ||
-          worktree.startsWith(cwd + "/")
-        ) return pid
-      } catch {
-        // process exited — skip
+  const managedByPid = new Map(loadSpawnedInstances().map((i) => [i.pid, i]))
+
+  function getCwdForPid(pid: number): string {
+    try {
+      if (process.platform === "linux") {
+        return execSync(`readlink /proc/${pid}/cwd 2>/dev/null`, {
+          encoding: "utf-8", timeout: 1000,
+        }).trim()
       }
+      if (process.platform === "darwin") {
+        const lsofOut = execSync(`lsof -p ${pid} 2>/dev/null`, {
+          encoding: "utf-8", timeout: 2000,
+        })
+        const cwdLine = lsofOut.split("\n").find((l) => l.includes(" cwd "))
+        return cwdLine?.trim().split(/\s+/).slice(8).join(" ") ?? ""
+      }
+    } catch {
+      return ""
     }
-  } catch {
-    // ps failed
+    return ""
+  }
+
+  for (const proc of listOpencodeProcesses()) {
+    const managed = managedByPid.get(proc.pid)
+    const cwd = managed?.cwd ?? getCwdForPid(proc.pid)
+    if (cwd && isSameOrParentPath(cwd, worktree)) {
+      return proc.pid
+    }
   }
   return null
 }
@@ -203,9 +196,7 @@ export function killInstance(worktree: string, sessionId: string | null): void {
   const toKill = instances.filter((i) => {
     if (sessionId && i.sessionId === sessionId) return true
     return (
-      i.cwd === worktree ||
-      i.cwd.startsWith(worktree + "/") ||
-      worktree.startsWith(i.cwd + "/")
+      isSameOrParentPath(i.cwd, worktree)
     )
   })
 
@@ -241,9 +232,7 @@ export async function ensureServeProcess(cwd: string): Promise<number> {
   // 2. Check if we already have a live serve process for this directory
   for (const inst of liveInstances) {
     const cwdMatch =
-      inst.cwd === cwd ||
-      inst.cwd.startsWith(cwd + "/") ||
-      cwd.startsWith(inst.cwd + "/")
+      isSameOrParentPath(inst.cwd, cwd)
     if (cwdMatch && (await isPortAlive(inst.port))) {
       return inst.port
     }

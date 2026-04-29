@@ -1,10 +1,9 @@
 import { Database } from "bun:sqlite"
-import { homedir } from "os"
-import { join } from "path"
 import { existsSync } from "fs"
 import type { SessionStatus } from "../store.js"
+import { getDefaultOpencodeDbPath } from "../platform/dirs.js"
 
-const DB_PATH = join(homedir(), ".local", "share", "opencode", "opencode.db")
+const DB_PATH = getDefaultOpencodeDbPath()
 
 /** Tool names that indicate the session needs user input */
 export const NEEDS_INPUT_TOOLS = ["question", "plan_exit"] as const

@@ -24,7 +24,8 @@ function expandHome(p: string): string {
 
 function isFzfAvailable(): boolean {
   try {
-    execSync("which fzf", { stdio: "pipe" })
+    const cmd = process.platform === "win32" ? "where fzf" : "which fzf"
+    execSync(cmd, { stdio: "pipe" })
     return true
   } catch {
     return false
@@ -33,6 +34,7 @@ function isFzfAvailable(): boolean {
 
 function runFzf(): string | undefined {
   try {
+    if (process.platform === "win32") return undefined
     const searchPaths = [
       expandHome("~/Programming"),
       expandHome("~/repos"),

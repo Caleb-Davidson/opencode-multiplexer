@@ -19,8 +19,9 @@ import {
  * the repo directory name instead of the branch directory name.
  */
 export function deriveRepoName(dir: string): string {
-  const idx = dir.indexOf("/.worktrees/")
-  if (idx !== -1) return basename(dir.slice(0, idx))
+  const parts = dir.replace(/\\/g, "/").split("/").filter(Boolean)
+  const wtIdx = parts.indexOf(".worktrees")
+  if (wtIdx > 0) return parts[wtIdx - 1]!
   return basename(dir)
 }
 
@@ -40,6 +41,8 @@ export function shortenModel(model: string): string {
 }
 import { useStore, type OcmInstance, type OcmSession, type SessionStatus } from "./store.js"
 import { loadSpawnedInstances, loadManagedSessions } from "./registry/instances.js"
+import { isSameOrParentPath } from "./platform/path-utils.js"
+import { listOpencodeProcesses } from "./platform/process-discovery.js"
 
 interface RunningProcess {
   cwd: string
@@ -56,13 +59,15 @@ function getCwdForPid(pid: number): string {
       return execSync(`readlink /proc/${pid}/cwd 2>/dev/null`, {
         encoding: "utf-8", timeout: 1000,
       }).trim()
-    } else {
+    }
+    if (process.platform === "darwin") {
       const lsofOutput = execSync(`lsof -p ${pid} 2>/dev/null`, {
         encoding: "utf-8", timeout: 2000,
       })
       const cwdLine = lsofOutput.split("\n").find((l) => l.includes(" cwd "))
       return cwdLine?.trim().split(/\s+/).slice(8).join(" ") ?? ""
     }
+    return ""
   } catch {
     return ""
   }
@@ -75,44 +80,27 @@ function getCwdForPid(pid: number): string {
  */
 function getRunningOpencodeProcesses(): RunningProcess[] {
   try {
-    const psOutput = execSync("ps -eo pid,args 2>/dev/null", {
-      encoding: "utf-8",
-      timeout: 3000,
-    })
-
     // Load spawned instances to resolve sessionIds for serve processes
     const spawnedInstances = loadSpawnedInstances()
+    const spawnedByPid = new Map(spawnedInstances.map((i) => [i.pid, i]))
     const spawnedByPort = new Map(spawnedInstances.map((i) => [i.port, i]))
 
     const results: RunningProcess[] = []
-    for (const line of psOutput.split("\n")) {
-      const trimmed = line.trim()
-
-      // Match TUI: "opencode" or "opencode -s {sessionId}"
-      // Linux: "node /path/to/opencode" wrapper is 1:1 with real sessions. macOS: bare "opencode".
-      // Never match ".opencode" — it's always a child process or orphaned subagent.
-      // NOTE: Does not match standalone binaries ("/usr/local/bin/opencode") — assumes npm/nvm/bun wrapper on Linux.
-      const tuiMatch = trimmed.match(/^(\d+)\s+(?:(?:node|bun|deno)\s+\S*\/opencode|opencode)(?:\s+-s\s+(\S+))?$/)
-      if (tuiMatch) {
-        const pid = parseInt(tuiMatch[1]!, 10)
-        const sessionId = tuiMatch[2] ?? null
-        const cwd = getCwdForPid(pid)
-        if (cwd) results.push({ cwd, sessionId })
+    for (const proc of listOpencodeProcesses()) {
+      if (proc.kind === "tui") {
+        const managed = spawnedByPid.get(proc.pid)
+        const cwd = managed?.cwd ?? getCwdForPid(proc.pid)
+        if (cwd) results.push({ cwd, sessionId: proc.sessionId })
         continue
       }
 
-      // Match serve: "opencode serve --port {port} ..."
-      // Linux: "node /path/to/opencode" wrapper. macOS: bare "opencode".
-      const serveMatch = trimmed.match(/^(\d+)\s+(?:(?:node|bun|deno)\s+\S*\/opencode|opencode)\s+serve\s+.*--port\s+(\d+)/)
-      if (serveMatch) {
-        const pid = parseInt(serveMatch[1]!, 10)
-        const port = parseInt(serveMatch[2]!, 10)
+      if (proc.kind === "serve" && proc.port) {
+        const port = proc.port
         const spawned = spawnedByPort.get(port)
-        const cwd = spawned?.cwd ?? getCwdForPid(pid)
+        const cwd = spawned?.cwd ?? getCwdForPid(proc.pid)
         if (cwd) results.push({ cwd, sessionId: spawned?.sessionId ?? null, port })
         continue
       }
-
     }
 
     return results
@@ -140,10 +128,7 @@ function findBestProject(
   let best: { id: string; worktree: string } | null = null
   let bestLen = -1
   for (const p of projects) {
-    const isMatch =
-      cwd === p.worktree ||
-      cwd.startsWith(p.worktree + "/") ||
-      p.worktree.startsWith(cwd + "/")
+    const isMatch = isSameOrParentPath(cwd, p.worktree)
     if (isMatch && p.worktree.length > bestLen) {
       best = p
       bestLen = p.worktree.length
